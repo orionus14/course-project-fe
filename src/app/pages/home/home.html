@@ -1,0 +1,130 @@
+<div class="max-w-content mx-auto p-4 sm:p-6 md:p-8">
+    <!-- User controls -->
+    <div class="flex justify-end mb-6">
+        <button (click)="logout()"
+            class="bg-primary-color text-white py-3 px-6 rounded-xl shadow-light-orange hover:opacity-90 transition">
+            🔒 Вийти
+        </button>
+    </div>
+
+    <div class="voice-assistant-container bg-light-gray p-6 rounded-2xl shadow-light-gray">
+        <h2 class="text-2xl font-semibold mb-6 text-dark-gray">Голосовий помічник</h2>
+
+        <!-- Вибір способу введення -->
+        <div class="input-method flex flex-col sm:flex-row sm:gap-6 mb-6">
+            <label class="flex items-center gap-2">
+                <input type="radio" name="inputMethod" value="record" [(ngModel)]="inputMethod" class="form-radio">
+                🎤 Запис з мікрофону
+            </label>
+            <label class="flex items-center gap-2">
+                <input type="radio" name="inputMethod" value="upload" [(ngModel)]="inputMethod" class="form-radio">
+                📁 Завантажити файл
+            </label>
+        </div>
+
+        <!-- Вибір движка -->
+        <div class="engine-selection flex flex-col sm:flex-row sm:gap-6 mb-6">
+            <label class="flex items-center gap-2">
+                <input type="radio" name="engine" value="whisper" [(ngModel)]="engine" class="form-radio">
+                Whisper (EN)
+            </label>
+            <label class="flex items-center gap-2">
+                <input type="radio" name="engine" value="custom" [(ngModel)]="engine" class="form-radio">
+                Власна ASR (UA)
+            </label>
+        </div>
+
+        <!-- Запис з мікрофону -->
+        @if(inputMethod === 'record') {
+        <div class="recording-controls flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
+            <button (click)="startRecording()" [disabled]="recording || loading"
+                class="h-14 px-6 bg-primary-color text-white rounded-xl shadow-light-orange hover:opacity-90 transition disabled:bg-medium-gray">
+                🎤 Почати запис
+            </button>
+            <button (click)="stopRecording()" [disabled]="!recording || loading"
+                class="h-14 px-6 bg-secondary-color text-dark-gray rounded-xl shadow-light-yellow hover:opacity-90 transition disabled:bg-medium-gray">
+                ⏹️ Зупинити
+            </button>
+            @if(recording) {
+            <span class="text-primary-color font-semibold ml-2">● Запис...</span>
+            }
+        </div>
+        }
+
+        <!-- Завантаження файлу -->
+        @if(inputMethod === 'upload') {
+        <div class="upload-controls flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
+            <input type="file" accept="audio/*" (change)="onFileSelected($event)" #fileInput
+                class="h-14 w-full sm:w-72 rounded-xl border border-border-gray px-4 shadow-light-gray">
+            <button (click)="uploadFile()" [disabled]="!selectedFile || loading"
+                class="h-14 px-6 bg-primary-color text-white rounded-xl shadow-light-orange hover:opacity-90 transition disabled:bg-medium-gray">
+                📤 Завантажити та розпізнати
+            </button>
+        </div>
+        }
+
+        <!-- Чекбокс для збереження аудіо -->
+        <div class="save-option mb-6">
+            <label class="flex items-center gap-2">
+                <input type="checkbox" [(ngModel)]="saveAudio" class="form-checkbox">
+                Зберегти аудіо файл
+            </label>
+        </div>
+
+        <!-- Завантаження -->
+        @if(loading) {
+        <div class="loading mb-6">
+            <p class="text-dark-gray font-medium">⏳ Обробка...</p>
+        </div>
+        }
+
+        <!-- Історія записів -->
+
+        <div class="records-history mt-6">
+            <button (click)="showRecords = !showRecords"
+                class="mb-4 h-12 px-6 bg-secondary-color text-dark-gray rounded-xl shadow-light-yellow hover:opacity-90 transition">
+                🔽 Історія записів
+            </button>
+
+            @if(showRecords) {
+            <!-- Спадне меню -->
+            <div class="flex flex-col gap-4 max-h-96 overflow-y-auto">
+                <button (click)="loadRecords()" [disabled]="loading"
+                    class="mb-2 h-12 px-6 bg-secondary-color text-dark-gray rounded-xl shadow-light-yellow hover:opacity-90 transition disabled:bg-medium-gray">
+                    🔄 Оновити
+                </button>
+
+                @if(records.length > 0) {
+                <div class="records-list flex flex-col gap-4">
+                    @for(record of records; track record.id) {
+                    <div
+                        class="record-item flex flex-col sm:flex-row sm:justify-between items-start sm:items-center p-4 bg-white rounded-xl shadow-light-gray">
+                        <div class="record-content mb-2 sm:mb-0">
+                            <p class="record-text text-dark-gray">{{ record.text }}</p>
+                            <small class="text-medium-gray">{{ record.created_at | date:'short' }} | {{ record.engine
+                                }}</small>
+                        </div>
+                        <div class="record-actions flex gap-2">
+                            @if(record.audio_filename) {
+                            <button (click)="playAudio(record.audio_filename)"
+                                class="px-4 py-2 bg-primary-color text-white rounded-xl shadow-light-orange hover:opacity-90 transition">
+                                ▶️
+                            </button>
+                            }
+                            <button (click)="deleteRecord(record.id)"
+                                class="px-4 py-2 bg-error-message text-white rounded-xl shadow-light-orange hover:opacity-90 transition">
+                                🗑️
+                            </button>
+                        </div>
+                    </div>
+                    }
+                </div>
+                } @else {
+                <p class="no-records text-medium-gray">Немає записів</p>
+                }
+            </div>
+            }
+        </div>
+
+    </div>
+</div>

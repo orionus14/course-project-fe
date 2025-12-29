@@ -1,0 +1,65 @@
+<div class="absolute -top-20 left-10 -z-10 h-40 w-40 rounded-full bg-[#FFECE7]"></div>
+<div class="absolute -left-6 -top-10 -z-10 h-20 w-20 rounded-full bg-primary-color"></div>
+<div class="absolute -top-16 right-0 -z-10 h-32 w-32 rounded-full bg-primary-color"></div>
+<div class="absolute right-20 top-10 -z-20 h-10 w-10 rounded-full bg-[#FFECE7]"></div>
+<div class="absolute"></div>
+<div class="flex justify-center">
+    <div class="max-w-content">
+        <h1 class="my-8 text-3xl sm:text-center">
+            {{ isRegister ? 'Sign Up' : 'Login' }}
+        </h1>
+        <form [formGroup]="form" (ngSubmit)="onSubmit()">
+            @if (isRegister) {
+            <div class="field">
+                <label for="name">Full name</label>
+                <input type="text" id="name" formControlName="name" placeholder="Full name"
+                    [class.invalid]="isInvalidData('name')" />
+                @if (isInvalidData('name')) {
+                <p class="w-60 text-error-message">
+                    {{ form.get('name')!.errors | controlErrorHandler }}
+                </p>
+                }
+            </div>
+            }
+            <div class="field">
+                <label for="email">E-mail</label>
+                <input type="email" id="email" formControlName="email" placeholder="Your email or phone"
+                    [class.invalid]="isInvalidData('email')" />
+                @if (isInvalidData('email')) {
+                <p class="w-60 text-error-message">
+                    {{ form.get('email')!.errors | controlErrorHandler }}
+                </p>
+                }
+            </div>
+            <div class="field">
+                <label for="password">Password</label>
+                <input type="password" id="password" formControlName="password" placeholder="Password"
+                    [class.invalid]="isInvalidData('password')" />
+                @if (isInvalidData('password')) {
+                <p class="w-60 text-error-message">
+                    {{ form.get('password')!.errors | controlErrorHandler }}
+                </p>
+                }
+            </div>
+
+            <div class="flex flex-col items-center">
+                @if (!isRegister) {
+                <p class="mb-8 cursor-pointer text-sm text-primary-color">
+                    Forgot password?
+                </p>
+                }
+                <button [disabled]="isDisabled()" [ngClass]="{ 'btn-disabled': isDisabled() }" class="primary-button"
+                    type="submit">
+                    {{ isRegister ? 'Sign Up' : 'Login' }}
+                </button>
+            </div>
+        </form>
+
+        <p class="mt-8 text-center text-sm text-dark-gray">
+            {{ isRegister ? 'Already have an account?' : "Don't have an account?" }}
+            <span class="cursor-pointer text-primary-color" [routerLink]="[signRouting]">
+                {{ isRegister ? 'Login' : 'Sign Up' }}
+            </span>
+        </p>
+    </div>
+</div>
