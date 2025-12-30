@@ -1,10 +1,11 @@
-import { Component, NgZone, OnInit, ViewChild, ElementRef } from '@angular/core';
+import { Component, NgZone, OnInit, ViewChild, ElementRef, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { Speech } from '../../shared/services/speech.service';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { UserService } from '../../shared/services/user.service';
 import { AuthService } from '../../shared/services/auth.service';
 import { Router } from '@angular/router';
+import { UserInterface } from '../../shared/interfaces/user';
 
 interface VoiceRecord {
   id: string;
@@ -21,8 +22,11 @@ interface VoiceRecord {
   templateUrl: './home.html',
   styleUrl: './home.css',
 })
-export class Home implements OnInit {
+export class Home implements OnInit, OnDestroy {
   @ViewChild('fileInput') fileInput!: ElementRef<HTMLInputElement>;
+
+  // Користувач
+  currentUser: UserInterface | null = null;
 
   // Стан
   recording = false;
@@ -32,14 +36,18 @@ export class Home implements OnInit {
   saveAudio = true;
   showRecords = false;
 
-
   // Результати
   transcript = '';
   language = '';
+  isEditingTranscript = false;
+  copySuccess = false;
 
   // Запис
-  mediaRecorder!: MediaRecorder;
+  mediaRecorder: MediaRecorder | null = null;
   audioChunks: Blob[] = [];
+  mediaStream: MediaStream | null = null;
+  recordedAudioBlob: Blob | null = null;
+  recordedAudioUrl: string | null = null;
 
   // Файл
   selectedFile: File | null = null;
@@ -51,22 +59,44 @@ export class Home implements OnInit {
     private speechService: Speech,
     private ngZone: NgZone,
     private authService: AuthService,
-    private router: Router
+    private userService: UserService,
+    private router: Router,
+    private cdr: ChangeDetectorRef
   ) { }
 
   ngOnInit(): void {
+    this.loadUserInfo();
     this.loadRecords();
   }
 
-  logout() {
+  ngOnDestroy(): void {
+    this.cleanupMediaRecorder();
+    this.cleanupRecordedAudio();
+  }
+
+  loadUserInfo(): void {
+    this.userService.getCachedUser().subscribe({
+      next: user => {
+        this.ngZone.run(() => {
+          this.currentUser = user;
+          this.cdr.detectChanges();
+        });
+      },
+      error: err => {
+        console.error('Error loading user info:', err);
+      }
+    });
+  }
+
+  logout(): void {
     this.authService.logout().subscribe({
       next: () => {
-        this.transcript = '';
-        this.records = [];
-        this.selectedFile = null;
-        this.recording = false;
-        this.loading = false;
-        this.router.navigate(['/login']);
+        this.ngZone.run(() => {
+          this.resetState();
+          this.userService.clearUser();
+          this.cdr.detectChanges();
+          this.router.navigate(['/login']);
+        });
       },
       error: err => {
         console.error('Logout error:', err);
@@ -75,120 +105,316 @@ export class Home implements OnInit {
     });
   }
 
+  resetState(): void {
+    this.transcript = '';
+    this.language = '';
+    this.records = [];
+    this.selectedFile = null;
+    this.recording = false;
+    this.loading = false;
+    this.showRecords = false;
+    this.isEditingTranscript = false;
+    this.copySuccess = false;
+    this.cleanupMediaRecorder();
+    this.cleanupRecordedAudio();
+  }
 
   // ========== ЗАПИС З МІКРОФОНУ ==========
 
-  async startRecording() {
-    if (this.recording) return;
+  async startRecording(): Promise<void> {
+    if (this.recording || this.loading || this.recordedAudioUrl) {
+      return;
+    }
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      this.mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-      this.audioChunks = [];
 
-      this.mediaRecorder.ondataavailable = e => this.audioChunks.push(e.data);
+      this.ngZone.run(() => {
+        this.mediaStream = stream;
+        this.transcript = '';
+        this.language = '';
 
-      this.mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
-        this.ngZone.run(() => this.sendAudio(audioBlob));
-      };
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : 'audio/mp4';
 
-      this.mediaRecorder.start();
-      this.recording = true;
-      console.log('Recording started...');
+        this.mediaRecorder = new MediaRecorder(stream, { mimeType });
+        this.audioChunks = [];
+
+        this.mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) {
+            this.audioChunks.push(e.data);
+          }
+        };
+
+        this.mediaRecorder.onstop = () => {
+          const audioBlob = new Blob(this.audioChunks, { type: this.mediaRecorder!.mimeType });
+
+          this.ngZone.run(() => {
+            this.recordedAudioBlob = audioBlob;
+            this.recordedAudioUrl = URL.createObjectURL(audioBlob);
+            this.cleanupMediaRecorder();
+            this.cdr.detectChanges();
+          });
+        };
+
+        this.mediaRecorder.onerror = (event) => {
+          console.error('MediaRecorder error:', event);
+          this.cleanupMediaRecorder();
+
+          this.ngZone.run(() => {
+            this.recording = false;
+            this.cdr.detectChanges();
+            alert('Помилка під час запису');
+          });
+        };
+
+        this.mediaRecorder.start();
+        this.recording = true;
+        this.cdr.detectChanges();
+        console.log('Recording started...');
+      });
     } catch (error) {
       console.error('Error accessing microphone:', error);
-      alert('Не вдалося отримати доступ до мікрофону');
+      this.ngZone.run(() => {
+        this.recording = false;
+        this.cdr.detectChanges();
+        alert('Не вдалося отримати доступ до мікрофону');
+      });
     }
   }
 
-  stopRecording() {
-    if (!this.recording) return;
-
-    this.mediaRecorder.stop();
-    this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
+  stopRecording(): void {
+    if (!this.recording || !this.mediaRecorder) {
+      return;
+    }
 
     this.ngZone.run(() => {
-      this.recording = false;
-      console.log('Recording stopped');
+      try {
+        if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+          this.mediaRecorder.stop();
+        }
+
+        this.recording = false;
+        this.cdr.detectChanges();
+        console.log('Recording stopped');
+      } catch (error) {
+        console.error('Error stopping recording:', error);
+        this.cleanupMediaRecorder();
+        this.recording = false;
+        this.cdr.detectChanges();
+      }
     });
+  }
+
+  confirmAndSendRecording(): void {
+    if (this.recordedAudioBlob) {
+      this.sendAudio(this.recordedAudioBlob);
+    }
+  }
+
+  discardRecording(): void {
+    this.ngZone.run(() => {
+      this.cleanupRecordedAudio();
+      this.cdr.detectChanges();
+    });
+  }
+
+  cleanupMediaRecorder(): void {
+    if (this.mediaStream) {
+      this.mediaStream.getTracks().forEach(track => track.stop());
+      this.mediaStream = null;
+    }
+    this.mediaRecorder = null;
+    this.audioChunks = [];
+  }
+
+  cleanupRecordedAudio(): void {
+    if (this.recordedAudioUrl) {
+      URL.revokeObjectURL(this.recordedAudioUrl);
+      this.recordedAudioUrl = null;
+    }
+    this.recordedAudioBlob = null;
   }
 
   // ========== ЗАВАНТАЖЕННЯ ФАЙЛУ ==========
 
-  onFileSelected(event: Event) {
-    const input = event.target as HTMLInputElement;
-    if (input.files && input.files.length > 0) {
-      this.selectedFile = input.files[0];
-      console.log('File selected:', this.selectedFile.name);
-    }
+  onFileSelected(event: Event): void {
+    this.ngZone.run(() => {
+      const input = event.target as HTMLInputElement;
+      if (input.files && input.files.length > 0) {
+        this.selectedFile = input.files[0];
+        this.cdr.detectChanges();
+        console.log('File selected:', this.selectedFile.name);
+      }
+    });
   }
 
-  uploadFile() {
-    if (!this.selectedFile) return;
+  uploadFile(): void {
+    if (!this.selectedFile || this.loading) {
+      return;
+    }
     this.sendAudio(this.selectedFile);
+  }
+
+  clearSelectedFile(): void {
+    this.ngZone.run(() => {
+      this.selectedFile = null;
+      if (this.fileInput) {
+        this.fileInput.nativeElement.value = '';
+      }
+      this.cdr.detectChanges();
+    });
+  }
+
+  onInputMethodChange(): void {
+    this.ngZone.run(() => {
+      this.clearSelectedFile();
+      this.cleanupRecordedAudio();
+      this.transcript = '';
+      this.language = '';
+      this.isEditingTranscript = false;
+
+      if (this.recording) {
+        this.stopRecording();
+      }
+      this.cdr.detectChanges();
+    });
   }
 
   // ========== ВІДПРАВКА НА BACKEND ==========
 
-  sendAudio(blob: Blob) {
-
+  sendAudio(blob: Blob): void {
     this.ngZone.run(() => {
       this.loading = true;
       this.transcript = '';
+      this.language = '';
+      this.isEditingTranscript = false;
+      this.cdr.detectChanges();
     });
 
     this.speechService.transcribeAudio(blob, this.engine, this.saveAudio).subscribe({
       next: res => {
-
         this.ngZone.run(() => {
           this.transcript = res.text;
           this.language = res.language;
           this.loading = false;
+          this.clearSelectedFile();
+          this.cleanupRecordedAudio();
+          this.cdr.detectChanges();
           this.loadRecords();
         });
       },
       error: err => {
+        console.error('Transcription error:', err);
         this.ngZone.run(() => {
           this.loading = false;
+          this.cdr.detectChanges();
           alert('Помилка розпізнавання: ' + (err.error?.detail || err.message));
         });
       }
     });
   }
 
+  // ========== РЕДАГУВАННЯ ТА КОПІЮВАННЯ ==========
+
+  toggleEditTranscript(): void {
+    this.ngZone.run(() => {
+      this.isEditingTranscript = !this.isEditingTranscript;
+      this.cdr.detectChanges();
+    });
+  }
+
+  copyTranscript(): void {
+    this.copyToClipboard(this.transcript);
+  }
+
+  copyRecordText(text: string): void {
+    this.copyToClipboard(text);
+  }
+
+  private copyToClipboard(text: string): void {
+    navigator.clipboard.writeText(text).then(() => {
+      this.ngZone.run(() => {
+        this.copySuccess = true;
+        this.cdr.detectChanges();
+
+        setTimeout(() => {
+          this.ngZone.run(() => {
+            this.copySuccess = false;
+            this.cdr.detectChanges();
+          });
+        }, 2000);
+      });
+    }).catch(err => {
+      console.error('Failed to copy text:', err);
+      alert('Не вдалося скопіювати текст');
+    });
+  }
+
   // ========== ІСТОРІЯ ЗАПИСІВ ==========
 
-  loadRecords() {
-    this.loading = true;
-    this.speechService.getRecords().subscribe({
-      next: records => {
-        this.records = records;
-        this.loading = false;
-      },
-      error: err => {
-        console.error('Error loading records:', err);
-        this.loading = false;
+  toggleRecords(): void {
+    this.ngZone.run(() => {
+      this.showRecords = !this.showRecords;
+      this.cdr.detectChanges();
+      if (this.showRecords && this.records.length === 0) {
+        this.loadRecords();
       }
     });
   }
 
-  playAudio(filename: string) {
-    this.speechService.getAudioUrl(filename).subscribe({
-      next: url => {
-        const audio = new Audio(url);
-        audio.play();
+  loadRecords(): void {
+    this.ngZone.run(() => {
+      this.loading = true;
+      this.cdr.detectChanges();
+    });
+
+    this.speechService.getRecords().subscribe({
+      next: records => {
+        this.ngZone.run(() => {
+          this.records = records;
+          this.loading = false;
+          this.cdr.detectChanges();
+        });
       },
-      error: err => console.error('Error playing audio:', err)
+      error: err => {
+        console.error('Error loading records:', err);
+        this.ngZone.run(() => {
+          this.loading = false;
+          this.cdr.detectChanges();
+        });
+      }
     });
   }
 
-  deleteRecord(recordId: string) {
-    if (!confirm('Видалити цей запис?')) return;
+  playAudio(filename: string): void {
+    this.speechService.getAudioUrl(filename).subscribe({
+      next: url => {
+        const audio = new Audio(url);
+        audio.play().catch(err => {
+          console.error('Error playing audio:', err);
+          alert('Помилка відтворення аудіо');
+        });
+      },
+      error: err => {
+        console.error('Error loading audio:', err);
+        alert('Помилка завантаження аудіо');
+      }
+    });
+  }
+
+  deleteRecord(recordId: string): void {
+    if (!confirm('Видалити цей запис?')) {
+      return;
+    }
 
     this.speechService.deleteRecord(recordId).subscribe({
       next: () => {
-        this.records = this.records.filter(r => r.id !== recordId);
+        this.ngZone.run(() => {
+          this.records = this.records.filter(r => r.id !== recordId);
+          this.cdr.detectChanges();
+        });
       },
       error: err => {
         console.error('Error deleting record:', err);

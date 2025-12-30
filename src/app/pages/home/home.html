@@ -1,10 +1,25 @@
 <div class="max-w-content mx-auto p-4 sm:p-6 md:p-8">
-    <!-- User controls -->
-    <div class="flex justify-end mb-6">
-        <button (click)="logout()"
-            class="bg-primary-color text-white py-3 px-6 rounded-xl shadow-light-orange hover:opacity-90 transition">
-            🔒 Вийти
-        </button>
+    <!-- Header with logo and user info -->
+    <div class="header-section mb-8">
+        <div class="flex flex-col sm:flex-row justify-between items-center gap-4 mb-4">
+            <div class="logo-section">
+                <h1 class="text-3xl font-bold text-primary-color flex items-center gap-3">
+                    🎙️ Voice Recorder
+                </h1>
+            </div>
+            <div class="user-controls flex items-center gap-4">
+                @if(currentUser) {
+                <div class="user-welcome text-dark-gray">
+                    <span class="font-medium">Вітаємо, {{ currentUser.name || currentUser.email }}!</span>
+                </div>
+                }
+                <button (click)="logout()"
+                    class="bg-primary-color text-white py-3 px-6 rounded-xl shadow-light-orange hover:opacity-90 transition">
+                    🔒 Вийти
+                </button>
+            </div>
+        </div>
+        <div class="border-b-2 border-secondary-color"></div>
     </div>
 
     <div class="voice-assistant-container bg-light-gray p-6 rounded-2xl shadow-light-gray">
@@ -12,85 +27,154 @@
 
         <!-- Вибір способу введення -->
         <div class="input-method flex flex-col sm:flex-row sm:gap-6 mb-6">
-            <label class="flex items-center gap-2">
-                <input type="radio" name="inputMethod" value="record" [(ngModel)]="inputMethod" class="form-radio">
+            <label class="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="inputMethod" value="record" [(ngModel)]="inputMethod"
+                    (change)="onInputMethodChange()" class="form-radio cursor-pointer">
                 🎤 Запис з мікрофону
             </label>
-            <label class="flex items-center gap-2">
-                <input type="radio" name="inputMethod" value="upload" [(ngModel)]="inputMethod" class="form-radio">
+            <label class="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="inputMethod" value="upload" [(ngModel)]="inputMethod"
+                    (change)="onInputMethodChange()" class="form-radio cursor-pointer">
                 📁 Завантажити файл
             </label>
         </div>
 
         <!-- Вибір движка -->
         <div class="engine-selection flex flex-col sm:flex-row sm:gap-6 mb-6">
-            <label class="flex items-center gap-2">
-                <input type="radio" name="engine" value="whisper" [(ngModel)]="engine" class="form-radio">
+            <label class="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="engine" value="whisper" [(ngModel)]="engine"
+                    class="form-radio cursor-pointer">
                 Whisper (EN)
             </label>
-            <label class="flex items-center gap-2">
-                <input type="radio" name="engine" value="custom" [(ngModel)]="engine" class="form-radio">
+            <label class="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="engine" value="custom" [(ngModel)]="engine" class="form-radio cursor-pointer">
                 Власна ASR (UA)
             </label>
         </div>
 
         <!-- Запис з мікрофону -->
         @if(inputMethod === 'record') {
-        <div class="recording-controls flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
-            <button (click)="startRecording()" [disabled]="recording || loading"
-                class="h-14 px-6 bg-primary-color text-white rounded-xl shadow-light-orange hover:opacity-90 transition disabled:bg-medium-gray">
-                🎤 Почати запис
-            </button>
-            <button (click)="stopRecording()" [disabled]="!recording || loading"
-                class="h-14 px-6 bg-secondary-color text-dark-gray rounded-xl shadow-light-yellow hover:opacity-90 transition disabled:bg-medium-gray">
-                ⏹️ Зупинити
-            </button>
-            @if(recording) {
-            <span class="text-primary-color font-semibold ml-2">● Запис...</span>
+        <div class="recording-controls flex flex-col gap-4 mb-6">
+            <div class="flex flex-col sm:flex-row sm:items-center gap-4">
+                <button (click)="startRecording()" [disabled]="recording || loading || recordedAudioUrl"
+                    class="h-14 px-6 bg-primary-color text-white rounded-xl shadow-light-orange hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                    🎤 Почати запис
+                </button>
+                <button (click)="stopRecording()" [disabled]="!recording || loading"
+                    class="h-14 px-6 bg-secondary-color text-dark-gray rounded-xl shadow-light-yellow hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                    ⏹️ Зупинити
+                </button>
+                @if(recording) {
+                <span class="text-primary-color font-semibold ml-2 animate-pulse">● Запис...</span>
+                }
+            </div>
+
+            <!-- Попереднє прослуховування запису -->
+            @if(recordedAudioUrl && !recording) {
+            <div class="preview-section p-4 bg-white rounded-xl shadow-light-gray">
+                <h3 class="text-lg font-semibold text-dark-gray mb-3">Попереднє прослуховування:</h3>
+                <audio [src]="recordedAudioUrl" controls class="w-full mb-4"></audio>
+                <div class="flex flex-wrap gap-3">
+                    <button (click)="confirmAndSendRecording()" [disabled]="loading"
+                        class="px-6 py-3 bg-primary-color text-white rounded-xl shadow-light-orange hover:opacity-90 transition disabled:opacity-50">
+                        ✅ Підтвердити та розпізнати
+                    </button>
+                    <button (click)="discardRecording()"
+                        class="px-6 py-3 bg-error-message text-white rounded-xl shadow-light-orange hover:opacity-90 transition">
+                        ❌ Відхилити та записати заново
+                    </button>
+                </div>
+            </div>
             }
         </div>
         }
 
         <!-- Завантаження файлу -->
         @if(inputMethod === 'upload') {
-        <div class="upload-controls flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
-            <input type="file" accept="audio/*" (change)="onFileSelected($event)" #fileInput
-                class="h-14 w-full sm:w-72 rounded-xl border border-border-gray px-4 shadow-light-gray">
-            <button (click)="uploadFile()" [disabled]="!selectedFile || loading"
-                class="h-14 px-6 bg-primary-color text-white rounded-xl shadow-light-orange hover:opacity-90 transition disabled:bg-medium-gray">
-                📤 Завантажити та розпізнати
-            </button>
+        <div class="upload-controls flex flex-col gap-4 mb-6">
+            <div class="flex flex-col sm:flex-row sm:items-center gap-4">
+                <input type="file" accept="audio/*" (change)="onFileSelected($event)" #fileInput
+                    class="h-14 w-full sm:w-72 rounded-xl border border-border-gray px-4 shadow-light-gray">
+                <button (click)="uploadFile()" [disabled]="!selectedFile || loading"
+                    class="h-14 px-6 bg-primary-color text-white rounded-xl shadow-light-orange hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                    📤 Завантажити та розпізнати
+                </button>
+                @if(selectedFile) {
+                <button (click)="clearSelectedFile()"
+                    class="h-14 px-6 bg-error-message text-white rounded-xl shadow-light-orange hover:opacity-90 transition">
+                    ❌ Очистити
+                </button>
+                }
+            </div>
+            @if(selectedFile) {
+            <div class="selected-file-info mb-4 p-3 bg-white rounded-lg">
+                <p class="text-sm text-dark-gray">Обраний файл: <strong>{{ selectedFile.name }}</strong></p>
+            </div>
+            }
         </div>
         }
 
         <!-- Чекбокс для збереження аудіо -->
         <div class="save-option mb-6">
-            <label class="flex items-center gap-2">
-                <input type="checkbox" [(ngModel)]="saveAudio" class="form-checkbox">
+            <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" [(ngModel)]="saveAudio" class="form-checkbox cursor-pointer">
                 Зберегти аудіо файл
             </label>
         </div>
 
         <!-- Завантаження -->
         @if(loading) {
-        <div class="loading mb-6">
-            <p class="text-dark-gray font-medium">⏳ Обробка...</p>
+        <div class="loading mb-6 p-4 bg-secondary-color rounded-xl">
+            <p class="text-dark-gray font-medium flex items-center gap-2">
+                <span class="animate-spin">⏳</span> Обробка...
+            </p>
+        </div>
+        }
+
+        <!-- Результат транскрипції з можливістю редагування -->
+        @if(transcript && !loading) {
+        <div class="transcript-result mb-6 p-4 bg-white rounded-xl shadow-light-gray">
+            <h3 class="text-lg font-semibold text-dark-gray mb-2">Розпізнаний текст:</h3>
+
+            @if(isEditingTranscript) {
+            <textarea [(ngModel)]="transcript"
+                class="w-full p-3 border border-border-gray rounded-lg mb-3 min-h-32 text-dark-gray"
+                placeholder="Редагуйте текст..."></textarea>
+            } @else {
+            <p class="text-dark-gray mb-3 whitespace-pre-wrap">{{ transcript }}</p>
+            }
+
+            @if(language) {
+            <small class="text-medium-gray block mb-3">Мова: {{ language }}</small>
+            }
+
+            <div class="flex flex-wrap gap-3">
+                <button (click)="toggleEditTranscript()"
+                    class="px-4 py-2 bg-secondary-color text-dark-gray rounded-xl shadow-light-yellow hover:opacity-90 transition">
+                    {{ isEditingTranscript ? '💾 Зберегти зміни' : '✏️ Редагувати' }}
+                </button>
+                <button (click)="copyTranscript()"
+                    class="px-4 py-2 bg-primary-color text-white rounded-xl shadow-light-orange hover:opacity-90 transition">
+                    📋 Скопіювати
+                </button>
+                @if(copySuccess) {
+                <span class="text-primary-color font-medium flex items-center">✓ Скопійовано!</span>
+                }
+            </div>
         </div>
         }
 
         <!-- Історія записів -->
-
         <div class="records-history mt-6">
-            <button (click)="showRecords = !showRecords"
+            <button (click)="toggleRecords()"
                 class="mb-4 h-12 px-6 bg-secondary-color text-dark-gray rounded-xl shadow-light-yellow hover:opacity-90 transition">
-                🔽 Історія записів
+                {{ showRecords ? '🔼' : '🔽' }} {{ showRecords ? 'Сховати' : 'Показати' }} історію записів
             </button>
 
             @if(showRecords) {
-            <!-- Спадне меню -->
             <div class="flex flex-col gap-4 max-h-96 overflow-y-auto">
                 <button (click)="loadRecords()" [disabled]="loading"
-                    class="mb-2 h-12 px-6 bg-secondary-color text-dark-gray rounded-xl shadow-light-yellow hover:opacity-90 transition disabled:bg-medium-gray">
+                    class="mb-2 h-12 px-6 bg-secondary-color text-dark-gray rounded-xl shadow-light-yellow hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed">
                     🔄 Оновити
                 </button>
 
@@ -99,12 +183,16 @@
                     @for(record of records; track record.id) {
                     <div
                         class="record-item flex flex-col sm:flex-row sm:justify-between items-start sm:items-center p-4 bg-white rounded-xl shadow-light-gray">
-                        <div class="record-content mb-2 sm:mb-0">
+                        <div class="record-content mb-2 sm:mb-0 flex-1">
                             <p class="record-text text-dark-gray">{{ record.text }}</p>
                             <small class="text-medium-gray">{{ record.created_at | date:'short' }} | {{ record.engine
                                 }}</small>
                         </div>
                         <div class="record-actions flex gap-2">
+                            <button (click)="copyRecordText(record.text)"
+                                class="px-4 py-2 bg-secondary-color text-dark-gray rounded-xl shadow-light-yellow hover:opacity-90 transition">
+                                📋
+                            </button>
                             @if(record.audio_filename) {
                             <button (click)="playAudio(record.audio_filename)"
                                 class="px-4 py-2 bg-primary-color text-white rounded-xl shadow-light-orange hover:opacity-90 transition">
@@ -120,11 +208,10 @@
                     }
                 </div>
                 } @else {
-                <p class="no-records text-medium-gray">Немає записів</p>
+                <p class="no-records text-medium-gray text-center p-4">Немає записів</p>
                 }
             </div>
             }
         </div>
-
     </div>
 </div>

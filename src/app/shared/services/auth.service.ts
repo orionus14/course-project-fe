@@ -41,7 +41,7 @@ export class AuthService {
         return this.http
             .post<UserInterface>(this.loginUrl, user, { withCredentials: true })
             .pipe(
-                tap(u => this.userService.clearUser()), // можна оновити userSubject після успішного логіну
+                tap(u => this.userService.clearUser()),
                 catchError(error => {
                     console.error('Login error', error);
                     return throwError(() => error);

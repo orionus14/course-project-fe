@@ -40,6 +40,14 @@ export class Speech {
     );
   }
 
+  updateRecordText(recordId: string, text: string): Observable<any> {
+    return this.http.patch(
+      `${this.apiUrl}/records/${recordId}`,
+      { text },
+      { withCredentials: true }
+    );
+  }
+
   deleteRecord(recordId: string): Observable<any> {
     return this.http.delete(
       `${this.apiUrl}/records/${recordId}`,
