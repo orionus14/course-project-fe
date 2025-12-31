@@ -39,7 +39,7 @@
             </label>
         </div>
 
-        <!-- Вибір движка -->
+        <!-- Вибір рушія -->
         <div class="engine-selection flex flex-col sm:flex-row sm:gap-6 mb-6">
             <label class="flex items-center gap-2 cursor-pointer">
                 <input type="radio" name="engine" value="whisper" [(ngModel)]="engine"
@@ -134,10 +134,15 @@
         <!-- Результат транскрипції з можливістю редагування -->
         @if(transcript && !loading) {
         <div class="transcript-result mb-6 p-4 bg-white rounded-xl shadow-light-gray">
-            <h3 class="text-lg font-semibold text-dark-gray mb-2">Розпізнаний текст:</h3>
+            <div class="flex justify-between items-start mb-2">
+                <h3 class="text-lg font-semibold text-dark-gray">Розпізнаний текст:</h3>
+                @if(currentRecordId) {
+
+                }
+            </div>
 
             @if(isEditingTranscript) {
-            <textarea [(ngModel)]="transcript"
+            <textarea [(ngModel)]="editedTranscript"
                 class="w-full p-3 border border-border-gray rounded-lg mb-3 min-h-32 text-dark-gray"
                 placeholder="Редагуйте текст..."></textarea>
             } @else {
@@ -148,15 +153,29 @@
             <small class="text-medium-gray block mb-3">Мова: {{ language }}</small>
             }
 
-            <div class="flex flex-wrap gap-3">
-                <button (click)="toggleEditTranscript()"
-                    class="px-4 py-2 bg-secondary-color text-dark-gray rounded-xl shadow-light-yellow hover:opacity-90 transition">
-                    {{ isEditingTranscript ? '💾 Зберегти зміни' : '✏️ Редагувати' }}
+            <div class="flex flex-wrap gap-3 items-center">
+                @if(isEditingTranscript) {
+                <button (click)="saveTranscriptChanges()" [disabled]="savingTranscript"
+                    class="px-4 py-2 bg-primary-color text-white rounded-xl shadow-light-orange hover:opacity-90 transition disabled:opacity-50">
+                    {{ savingTranscript ? '⏳ Збереження...' : '💾 Зберегти зміни' }}
+                </button>
+                <button (click)="cancelEditTranscript()"
+                    class="px-4 py-2 bg-medium-gray text-white rounded-xl shadow-light-gray hover:opacity-90 transition">
+                    ❌ Скасувати
+                </button>
+                } @else {
+                <button (click)="startEditTranscript()" [disabled]="!currentRecordId"
+                    class="px-4 py-2 bg-secondary-color text-dark-gray rounded-xl shadow-light-yellow hover:opacity-90 transition disabled:opacity-50">
+                    ✏️ Редагувати
                 </button>
                 <button (click)="copyTranscript()"
                     class="px-4 py-2 bg-primary-color text-white rounded-xl shadow-light-orange hover:opacity-90 transition">
                     📋 Скопіювати
                 </button>
+                }
+                @if(saveSuccess) {
+                <span class="text-primary-color font-medium flex items-center">✓ Збережено!</span>
+                }
                 @if(copySuccess) {
                 <span class="text-primary-color font-medium flex items-center">✓ Скопійовано!</span>
                 }
@@ -181,29 +200,60 @@
                 @if(records.length > 0) {
                 <div class="records-list flex flex-col gap-4">
                     @for(record of records; track record.id) {
-                    <div
-                        class="record-item flex flex-col sm:flex-row sm:justify-between items-start sm:items-center p-4 bg-white rounded-xl shadow-light-gray">
-                        <div class="record-content mb-2 sm:mb-0 flex-1">
-                            <p class="record-text text-dark-gray">{{ record.text }}</p>
-                            <small class="text-medium-gray">{{ record.created_at | date:'short' }} | {{ record.engine
-                                }}</small>
-                        </div>
-                        <div class="record-actions flex gap-2">
-                            <button (click)="copyRecordText(record.text)"
-                                class="px-4 py-2 bg-secondary-color text-dark-gray rounded-xl shadow-light-yellow hover:opacity-90 transition">
-                                📋
+                    <div class="record-item flex flex-col p-4 bg-white rounded-xl shadow-light-gray">
+
+                        @if(editingRecordId === record.id) {
+                        <!-- Режим редагування -->
+                        <textarea [(ngModel)]="editingRecordText"
+                            class="w-full p-3 border border-border-gray rounded-lg mb-3 min-h-24 text-dark-gray"
+                            placeholder="Редагуйте текст..."></textarea>
+                        <small class="text-medium-gray mb-3 block">{{ record.created_at | date:'short' }} | {{
+                            record.engine }}</small>
+                        <div class="flex flex-wrap gap-2">
+                            <button (click)="saveRecordEdit(record.id)" [disabled]="savingRecord"
+                                class="px-4 py-2 bg-primary-color text-white rounded-xl shadow-light-orange hover:opacity-90 transition disabled:opacity-50">
+                                {{ savingRecord ? '⏳ Збереження...' : '💾 Зберегти' }}
                             </button>
-                            @if(record.audio_filename) {
-                            <button (click)="playAudio(record.audio_filename)"
-                                class="px-4 py-2 bg-primary-color text-white rounded-xl shadow-light-orange hover:opacity-90 transition">
-                                ▶️
-                            </button>
-                            }
-                            <button (click)="deleteRecord(record.id)"
-                                class="px-4 py-2 bg-error-message text-white rounded-xl shadow-light-orange hover:opacity-90 transition">
-                                🗑️
+                            <button (click)="cancelRecordEdit()"
+                                class="px-4 py-2 bg-medium-gray text-white rounded-xl shadow-light-gray hover:opacity-90 transition">
+                                ❌ Скасувати
                             </button>
                         </div>
+                        } @else {
+                        <!-- Звичайний режим -->
+                        <div class="flex flex-col sm:flex-row sm:justify-between items-start sm:items-center gap-3">
+                            <div class="record-content flex-1">
+                                <p class="record-text text-dark-gray mb-1">{{ record.text }}</p>
+                                <div class="flex flex-wrap gap-2 items-center">
+                                    <small class="text-medium-gray">{{ record.created_at | date:'short' }} | {{
+                                        record.engine }}</small>
+                                    @if(record.updated_at !== record.created_at) {
+
+                                    }
+                                </div>
+                            </div>
+                            <div class="record-actions flex gap-2">
+                                <button (click)="startRecordEdit(record)"
+                                    class="px-4 py-2 bg-secondary-color text-dark-gray rounded-xl shadow-light-yellow hover:opacity-90 transition">
+                                    ✏️
+                                </button>
+                                <button (click)="copyRecordText(record.text)"
+                                    class="px-4 py-2 bg-secondary-color text-dark-gray rounded-xl shadow-light-yellow hover:opacity-90 transition">
+                                    📋
+                                </button>
+                                @if(record.audio_filename) {
+                                <button (click)="playAudio(record.audio_filename)"
+                                    class="px-4 py-2 bg-primary-color text-white rounded-xl shadow-light-orange hover:opacity-90 transition">
+                                    ▶️
+                                </button>
+                                }
+                                <button (click)="deleteRecord(record.id)"
+                                    class="px-4 py-2 bg-error-message text-white rounded-xl shadow-light-orange hover:opacity-90 transition">
+                                    🗑️
+                                </button>
+                            </div>
+                        </div>
+                        }
                     </div>
                     }
                 </div>
@@ -213,5 +263,6 @@
             </div>
             }
         </div>
+
     </div>
 </div>
